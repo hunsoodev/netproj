@@ -1,0 +1,26 @@
+name: Automated Git Pull and Conditional Docker Compose Restart on GCP Instance
+on:
+  push:
+    branches:
+      - main
+      
+
+jobs:
+  access-gcp-instance:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v0.2.0
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: silent-wharf-411504
+
+    - name: Copy script.sh to GCP Instance
+      run: gcloud compute scp ./scripts/* airflow@private-projcet:~/scripts/ --zone=asia-northeast3-a
+
+    - name: Access Compute Engine and Execute Command
+      run: gcloud compute ssh airflow@private-projcet --zone=asia-northeast3-a --command="bash ~/scripts/airflow-git-sync.sh"
