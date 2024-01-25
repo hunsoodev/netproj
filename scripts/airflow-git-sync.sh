@@ -15,7 +15,7 @@ else
 	echo "On main branch. No action needed."
 fi
 
-git fetch -all
+git fetch --all
 
 if git diff main origin-https/main --name-only | grep -q 'docker-compose.yaml'; then
 	docker compose down && docker compose up -d 
