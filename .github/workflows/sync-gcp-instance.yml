@@ -20,7 +20,7 @@ jobs:
         project_id: silent-wharf-411504
 
     - name: Copy script.sh to GCP Instance
-      run: gcloud compute scp --recurse scripts airflow@private-projcet:~/scripts --zone=asia-northeast3-a
+      run: gcloud compute scp ./scripts/airflow-git-sync airflow@private-projcet:~/scripts/airflow-git-sync --zone=asia-northeast3-a
 
     - name: Access Compute Engine and Execute Command
       run: gcloud compute ssh airflow@private-projcet --zone=asia-northeast3-a --command="bash ~/scripts/airflow-git-sync.sh"
