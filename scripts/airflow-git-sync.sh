@@ -5,7 +5,7 @@ cd ~/netproj
 current_branch=$(git branch --show-current)
 flag=false
 
-if ["$current_branch" != "main"]; then
+if [ "$current_branch" != "main" ]; then
 	echo "Not on main branch. Executing git stash..."
 	git stash
 	echo "Switching to 'main' branch..."
@@ -25,7 +25,7 @@ fi
 
 git pull origin-https/main main
 
-if ["$flag" = true]; then
+if [ "$flag" = true ]; then
 	git switch $current_branch
 	git stach pop
 fi
