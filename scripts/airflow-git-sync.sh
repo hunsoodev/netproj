@@ -15,7 +15,7 @@ else
 	echo "On main branch. No action needed."
 fi
 
-git fetch --all
+git fetch origin-https
 
 if git diff main origin-https/main --name-only | grep -q 'docker-compose.yaml'; then
 	docker compose down && docker compose up -d 
@@ -23,7 +23,7 @@ else
 	echo "No changes in 'docker-compose.yaml'."
 fi
 
-git pull origin-https main
+git pull origin-https/main main
 
 if ["$flag" = true]; then
 	git switch $current_branch
