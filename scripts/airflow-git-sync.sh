@@ -23,7 +23,7 @@ else
 	echo "No changes in 'docker-compose.yaml'."
 fi
 
-git pull
+git pull origin-https main
 
 if ["$flag" = true]; then
 	git switch $current_branch
