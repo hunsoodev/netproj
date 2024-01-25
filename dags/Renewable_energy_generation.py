@@ -63,7 +63,7 @@ def upload_df_to_s3(df, s3_key):
 
         # 데이터프레임을 문자열 버퍼로 변환
         csv_buffer = StringIO()
-        df.to_csv(csv_buffer, index=False)
+        df.to_csv(csv_buffer, index=False, encoding='utf-8')
 
         # S3에 업로드
         hook.load_string(string_data=csv_buffer.getvalue(), bucket_name=BUCKET_NAME, key=s3_key, replace=True)
@@ -119,13 +119,14 @@ def extract(**context):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 2),
+    owner='hunsoo',
+    start_date=datetime(2024, 1, 1),
     schedule="@once",
     catchup=False,
     max_active_runs=1,
     default_args={
         'retries': 1,
-        'retry_delay': timedelta(minutes=3),
+        'retry_delay': timedelta(minutes=2),
     }
 )
 
