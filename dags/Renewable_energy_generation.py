@@ -177,7 +177,7 @@ def update_state(**kwargs):
         XCom.clear(
             task_ids=['get_state', 'extract', 'update_state'],
             dag_id='net-project-ETL', 
-            execution_date=execution_date)
+            execution_date=kwargs['execution_date'])
         logging.info("State deleted")
     else:
         # success == False인 경우 상태를 업데이트
