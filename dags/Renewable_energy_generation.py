@@ -187,7 +187,7 @@ def update_state(**kwargs):
             'request_count': REQUEST_COUNT,
             'success': success
         }
-        task_instance.xcom_push(key='http_request_state', value=state, task_ids='update_state')
+        task_instance.xcom_push(key='http_request_state', value=state)
         logging.info(f"State: {state}")
 
 
