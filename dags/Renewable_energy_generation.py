@@ -170,19 +170,20 @@ def update_state(**kwargs):
     result = task_instance.xcom_pull(key='return_value', task_ids='extract')
 
     if isinstance(result, tuple):  
-        success, execution_date, page_num = result
+        success, execu_date, page_num = result
     else:
         success = result
 
     if success == True:
         XCom.clear(
             task_id='get_state',
-            dag_id='net-project-ETL')
+            dag_id='net-project-ETL',
+            execution_date=kwargs['excution_date'])
         logging.info("State deleted")
     else:
         # success == False인 경우 상태를 업데이트
         state = {
-            'last_execution_date': execution_date,
+            'last_execution_date': execu_date,
             'last_page': page_num,
             'request_count': REQUEST_COUNT,
             'success': success
