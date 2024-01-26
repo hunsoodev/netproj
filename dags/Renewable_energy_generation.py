@@ -16,6 +16,10 @@ import math
 import time
 import requests
 import logging
+import pendulum
+
+## 로컬 타임존 생성
+local_tz = pendulum.timezone("Asia/Seoul")
 
 BUCKET_NAME = 'net-project'
 REQUEST_COUNT = 0
@@ -159,6 +163,7 @@ def update_state(success, **kwargs):
     task_instance = kwargs['ti']
     execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
     page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
+    success = task_instance.xcom_pull(task_ids='extract', key='success')
 
     if success == True:
         task_instance.xcom_delete(key='http_request_state')
@@ -178,7 +183,7 @@ def update_state(success, **kwargs):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 20),
+    start_date=datetime(2024, 1, 20, tzinfo=local_tz),
     schedule="@once",
     catchup=True,
     max_active_runs=1,
