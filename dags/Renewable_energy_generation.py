@@ -39,7 +39,7 @@ def get_or_initialize_state(**kwargs):
             'success': None
         }
         # 초기 상태를 XCom에 저장
-        task_instance.xcom_push(key='http_request_state', value=state, task_ids='get_state')
+        task_instance.xcom_push(key='http_request_state', value=state)
     logging.info(f"State: {state}")
 
 
@@ -187,7 +187,7 @@ def update_state(**kwargs):
             'request_count': REQUEST_COUNT,
             'success': success
         }
-        task_instance.xcom_push(key='http_request_state', value=state, task_ids='update_state')
+        task_instance.xcom_push(key='http_request_state', value=state)
         logging.info(f"State: {state}")
 
 
