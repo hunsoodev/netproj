@@ -36,7 +36,7 @@ def get_or_initialize_state(**kwargs):
             'last_execution_date': kwargs['ds_nodash'],
             'last_page': 1,
             'request_count': REQUEST_COUNT,
-            'success': True
+            'success': None
         }
         # 초기 상태를 XCom에 저장
         task_instance.xcom_push(key='http_request_state', value=state)
@@ -163,24 +163,26 @@ def extract(**context):
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
 def update_state(**kwargs):
+    global REQUEST_COUNT
     logging.info("Update state")
     task_instance = kwargs['ti']
     execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
     page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
-    success = task_instance.xcom_pull(task_ids='extract', key='success')
+    success = task_instance.xcom_pull(return_value=True, task_ids='extract', key='success')
 
     if success == True:
         task_instance.xcom_delete(key='http_request_state')
-        return 
-    
-    state = {
-        'last_execution_date': execution_date,
-        'last_page': page_num,
-        'request_count': REQUEST_COUNT,
-        'success': success
-    }
-    task_instance.xcom_push(key='http_request_state', value=state)
-    logging.info(f"State: {state}")
+        logging.info("State deleted")
+    else:
+        # success == False인 경우 상태를 업데이트
+        state = {
+            'last_execution_date': execution_date,
+            'last_page': page_num,
+            'request_count': REQUEST_COUNT,
+            'success': success
+        }
+        task_instance.xcom_push(key='http_request_state', value=state)
+        logging.info(f"State: {state}")
 
 
 
