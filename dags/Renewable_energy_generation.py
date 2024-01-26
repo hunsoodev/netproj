@@ -26,6 +26,8 @@ REQUEST_COUNT = 0
 
 
 def get_or_initialize_state(**kwargs):
+    logging.info("Get or initialize state")
+    global REQUEST_COUNT
     task_instance = kwargs['ti']
     state = task_instance.xcom_pull(task_ids='update_state', key='http_request_state')
     # 상태 정보가 없는 경우, 초기값으로 설정
@@ -38,6 +40,7 @@ def get_or_initialize_state(**kwargs):
         }
         # 초기 상태를 XCom에 저장
         task_instance.xcom_push(key='http_request_state', value=state)
+    logging.info(f"State: {state}")
 
 
 def create_url(api_key, page_num, start_date, end_date):
@@ -47,6 +50,7 @@ def create_url(api_key, page_num, start_date, end_date):
 
 # xml_string을 파싱하여 2차원 리스트로 변환
 def parse_xml(xml_string):
+    logging.info("Parsing XML")
     soup = BeautifulSoup(xml_string, 'lxml')
     data = []
     tags = soup.find_all("item")
@@ -57,6 +61,7 @@ def parse_xml(xml_string):
             tag_text = getattr(tag, tag_name).text.strip()
             tmp.append(int(tag_text) if tag_text else 0)
         data.append(tmp)
+    logging.info("Parsing done")
     return data
 
 
@@ -75,6 +80,7 @@ def send_request(url):
             response = requests.get(url, timeout=10)  # 타임아웃 설정
             REQUEST_COUNT += 1
             response.raise_for_status()  # 상태 코드 검증
+            logging.info(f"API 요청 횟수 : {REQUEST_COUNT}")
             return (True, response.text)
         except requests.exceptions.HTTPError as e:
             print(f"HTTP 에러: {e}")
@@ -87,11 +93,12 @@ def send_request(url):
 
 # 데이터프레임을 S3에 업로드
 def upload_df_to_s3(df, s3_key):
+    logging.info("Uploading file to S3")
     try:
         hook = S3Hook(aws_conn_id='netproj_s3_conn_id')
         # 데이터프레임을 문자열 버퍼로 변환
         csv_buffer = StringIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8')
+        df.to_csv(csv_buffer, index=False)
         # S3에 업로드
         hook.load_string(string_data=csv_buffer.getvalue(), bucket_name=BUCKET_NAME, key=s3_key, replace=True)
         logging.info(f"File {s3_key} successfully uploaded to S3 bucket {BUCKET_NAME}")
@@ -156,6 +163,7 @@ def extract(**context):
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
 def update_state(**kwargs):
+    logging.info("Update state")
     task_instance = kwargs['ti']
     execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
     page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
@@ -172,6 +180,7 @@ def update_state(**kwargs):
         'success': success
     }
     task_instance.xcom_push(key='http_request_state', value=state)
+    logging.info(f"State: {state}")
 
 
 
@@ -179,10 +188,10 @@ def update_state(**kwargs):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 1), 
+    start_date=datetime(2024, 1, 17), 
     schedule="@daily",
     catchup=True,
-    max_active_runs=1,
+    max_active_runs=2,
     default_args={
         'owner': 'hunsoo',
         'retries': 1,
