@@ -63,6 +63,7 @@ def parse_xml(xml_string):
 
 # url을 받아서 요청을 보내고 응답을 반환
 def send_request(url):
+    global REQUEST_COUNT
     max_retries = 5  # 최대 재시도 횟수
     retry_delay = 5  # 재시도 간 지연 시간(초)
 
@@ -159,7 +160,7 @@ def extract(**context):
         logging.exception(f"Error in the extraction process: {e}")
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
-def update_state(success, **kwargs):
+def update_state(**kwargs):
     task_instance = kwargs['ti']
     execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
     page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
