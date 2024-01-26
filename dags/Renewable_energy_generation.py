@@ -174,7 +174,7 @@ def update_state(**kwargs):
         success = result
 
     if success == True:
-        task_instance.xcom_delete(key='http_request_state')
+        XCom.clear(key='http_request_state')
         logging.info("State deleted")
     else:
         # success == False인 경우 상태를 업데이트
