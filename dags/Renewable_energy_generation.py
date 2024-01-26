@@ -3,6 +3,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.models import Variable
+from airflow.models import XCom
 
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
@@ -17,11 +18,29 @@ import requests
 import logging
 
 BUCKET_NAME = 'net-project'
+REQUEST_COUNT = 0
+
+
+def get_or_initialize_state(**kwargs):
+    task_instance = kwargs['ti']
+    state = task_instance.xcom_pull(task_ids='update_state', key='http_request_state')
+
+    # 상태 정보가 없는 경우, 초기값으로 설정
+    if not state:
+        state = {
+            'last_execution_date': kwargs['ds_nodash'],
+            'last_page': 1,
+            'request_count': REQUEST_COUNT,
+            'success': True
+        }
+        # 초기 상태를 XCom에 저장
+        task_instance.xcom_push(key='http_request_state', value=state)
 
 
 def create_url(api_key, page_num, start_date, end_date):
     base_url = "http://apis.data.go.kr/B552522/pg/reGeneration/getReGeneration"
     return f"{base_url}?serviceKey={api_key}&pageNo={page_num}&numOfRows=100&startDate={start_date}&endDate={end_date}"
+
 
 # xml_string을 파싱하여 2차원 리스트로 변환
 def parse_xml(xml_string):
@@ -37,23 +56,29 @@ def parse_xml(xml_string):
         data.append(tmp)
     return data
 
+
 # url을 받아서 요청을 보내고 응답을 반환
 def send_request(url):
     max_retries = 5  # 최대 재시도 횟수
     retry_delay = 5  # 재시도 간 지연 시간(초)
 
     for _ in range(max_retries):
+        if REQUEST_COUNT > 100:
+            logging.info(f"[초과] API 요청 횟수 : {REQUEST_COUNT}")
+            return (True, None)   
+        
         try:
             response = requests.get(url, timeout=10)  # 타임아웃 설정
+            REQUEST_COUNT += 1
             response.raise_for_status()  # 상태 코드 검증
-            return response.text
+            return (True, response.text)
         except requests.exceptions.HTTPError as e:
             print(f"HTTP 에러: {e}")
         except requests.exceptions.RequestException as e:
             print(f"요청 에러: {e}")
         time.sleep(retry_delay)
 
-    return None
+    return (False, None)
 
 
 # 데이터프레임을 S3에 업로드
@@ -76,19 +101,25 @@ def upload_df_to_s3(df, s3_key):
 
 def extract(**context):
     logging.info("Extract started")
+    success = True
+
     api_key = context["params"]["api_key"]
-    execution_date = context['ds_nodash']    # Airflow의 execution_date 변수 사용
-    
+
+    task_instance = context['ti']
+    state = task_instance.xcom_pull(task_ids='get_state', key='http_request_state')
+    execution_date = state['last_execution_date']
+    default_page_num = state['last_page']
+
     start_date = end_date = execution_date
-    
+
     try:
         initial_url = create_url(api_key, 1, start_date, end_date)
         
-        xml_string = send_request(initial_url)
-        if xml_string is None:
+        flag, xml_string = send_request(initial_url)
+        if flag == False and xml_string is None:
             raise Exception("초기 요청 실패")
         
-        print(xml_string) # debuging 용도
+        # print(xml_string) # debuging 용도
         soup = BeautifulSoup(xml_string, 'lxml')
 
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
@@ -96,32 +127,60 @@ def extract(**context):
         cnt = math.ceil(cnts / 100)
     
         all_data = []
-        for page_num in range(1, cnt + 1):
+        for page_num in range(default_page_num, cnt + 1):
             url = create_url(api_key, page_num, start_date, end_date)
-            xml_string = send_request(url)
-            if xml_string:
-                all_data.extend(parse_xml(xml_string))
-                logging.info(f"Page {page_num}/{cnt} successfully processed.")
-
-        # 데이터 저장 후 로그 메시지 기록
-        df = pd.DataFrame(all_data)
-        hour = [f'{i}시' for i in range(1, 25)]
-        df.columns = ['날짜', '발전기명'] + hour
-
-        raw_data_s3_key = f'raw_data/extract_data_{execution_date}.csv'
-        upload_df_to_s3(df, raw_data_s3_key)
+            flag, xml_string = send_request(url)
+            if flag == True:
+                if xml_string is not None:
+                    all_data.extend(parse_xml(xml_string))
+                    logging.info(f"Page {page_num}/{cnt} successfully processed.")
+                else:
+                    success = False
+                    logging.info(f"Page {page_num}/{cnt} failed to process.")
+                    return execution_date, page_num, success
         
+        if all_data:
+            # 데이터 저장 후 로그 메시지 기록
+            df = pd.DataFrame(all_data)
+            hour = [f'{i}시' for i in range(1, 25)]
+            df.columns = ['날짜', '발전기명'] + hour
+
+            raw_data_s3_key = f'raw_data/extract_data_{execution_date}.csv'
+            upload_df_to_s3(df, raw_data_s3_key)
+
         logging.info("Extract done")
+
         
     except Exception as e:
         logging.exception(f"Error in the extraction process: {e}")
 
+# Airflow에서 제공하는 XCom을 사용하여 상태를 저장
+def update_state(success, **kwargs):
+    task_instance = kwargs['ti']
+    execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
+    page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
+
+    if success == True:
+        task_instance.xcom_delete(key='http_request_state')
+        return 
+        
+    state = {
+        'last_execution_date': execution_date,
+        'last_page': page_num,
+        'request_count': REQUEST_COUNT,
+        'success': success
+    }
+    task_instance.xcom_push(key='http_request_state', value=state)
+
+
+
+
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 1),
+    start_date=datetime(2024, 1, 20),
     schedule="@once",
-    catchup=False,
+    catchup=True,
     max_active_runs=1,
     default_args={
         'owner': 'hunsoo',
@@ -129,6 +188,15 @@ dag = DAG(
         'retry_delay': timedelta(minutes=2),
     }
 )
+
+
+get_state_task = PythonOperator(
+    task_id='get_state',
+    python_callable=get_or_initialize_state,
+    provide_context=True,
+    dag=dag
+)
+
 
 extract = PythonOperator(
     task_id = 'extract',
@@ -140,4 +208,12 @@ extract = PythonOperator(
     dag = dag
 )
 
-extract
+
+update_state_task = PythonOperator(
+    task_id = 'update_state',
+    python_callable = update_state,
+    provide_context = True,
+    dag = dag
+)
+
+get_state_task >> extract >> update_state_task
