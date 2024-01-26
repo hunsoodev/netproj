@@ -110,7 +110,7 @@ def upload_df_to_s3(df, s3_key):
 
 def extract(**context):
     logging.info("Extract started")
-    success = True
+    success = False
     api_key = context["params"]["api_key"]
     task_instance = context['ti']
     state = task_instance.xcom_pull(task_ids='get_state', key='http_request_state')
@@ -127,9 +127,10 @@ def extract(**context):
         soup = BeautifulSoup(xml_string, 'lxml')
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
         if soup.totalcount is None:
-            logging.info("총 데이터 수를 가져오지 못했습니다.")
+            raise Exception("총 데이터 수를 가져오지 못했습니다.") # totalcount가 없는 경우 Dag 재시도
+        
         # cnts 기본값 설정
-        cnts = int(soup.totalcount.text) if soup.totalcount.text else 0
+        cnts = int(soup.totalcount.text)
         cnt = math.ceil(cnts / 100)
     
         all_data = []
@@ -141,7 +142,6 @@ def extract(**context):
                     all_data.extend(parse_xml(xml_string))
                     logging.info(f"Page {page_num}/{cnt} successfully processed.")
                 else:
-                    success = False
                     logging.info(f"Page {page_num}/{cnt} failed to process.")
                     return (success, execution_date, page_num)
         
@@ -155,6 +155,7 @@ def extract(**context):
             upload_df_to_s3(df, raw_data_s3_key)
 
         logging.info("Extract done")
+        success = True
         return success
         
     except Exception as e:
@@ -177,7 +178,7 @@ def update_state(**kwargs):
         XCom.clear(
             task_id='get_state',
             dag_id='net-project-ETL', 
-            execution_date=kwargs['execution_date'])
+            execution_date=kwargs['ds_nodash'])
         logging.info("State deleted")
     else:
         # success == False인 경우 상태를 업데이트
@@ -202,8 +203,8 @@ dag = DAG(
     max_active_runs=2,
     default_args={
         'owner': 'hunsoo',
-        'retries': 1,
-        'retry_delay': timedelta(minutes=2),
+        'retries': 3,
+        'retry_delay': timedelta(minutes=1),
     }
 )
 
