@@ -175,7 +175,6 @@ def update_state(**kwargs):
 
     if success == True:
         XCom.clear(
-            task_id=['get_state', 'extract', 'update_state'],
             dag_id='net-project-ETL', 
             execution_date=kwargs['execution_date'])
         logging.info("State deleted")
