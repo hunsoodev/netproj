@@ -123,12 +123,13 @@ def extract(**context):
         flag, xml_string = send_request(initial_url)
         if flag == False and xml_string is None:
             raise Exception("초기 요청 실패")
-        # print(xml_string) # debuging 용도
+        
+        print(xml_string) # debuging 용도
         soup = BeautifulSoup(xml_string, 'lxml')
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
         if soup.totalcount is None:
-            raise Exception("총 데이터 수를 가져오지 못했습니다.") # totalcount가 없는 경우 Dag 재시도
-        
+            raise Exception("총 데이터 수를 가져오지 못했습니다.") # totalcount가 없는 경우 dags 자체 재시도
+            
         # cnts 기본값 설정
         cnts = int(soup.totalcount.text)
         cnt = math.ceil(cnts / 100)
@@ -160,7 +161,7 @@ def extract(**context):
         
     except Exception as e:
         logging.exception(f"Error in the extraction process: {e}")
-
+        raise  # 에러를 다시 던져서 에어플로우가 실패로 처리하도록 함
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
 def update_state(**kwargs):
@@ -197,10 +198,10 @@ def update_state(**kwargs):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 17), 
+    start_date=datetime(2024, 1, 23), 
     schedule="@daily",
     catchup=True,
-    max_active_runs=2,
+    max_active_runs=1,
     default_args={
         'owner': 'hunsoo',
         'retries': 3,
