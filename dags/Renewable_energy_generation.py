@@ -143,7 +143,7 @@ def extract(**context):
                 else:
                     success = False
                     logging.info(f"Page {page_num}/{cnt} failed to process.")
-                    return execution_date, page_num, success
+                    return success, execution_date, page_num
         
         if all_data:
             # 데이터 저장 후 로그 메시지 기록
@@ -166,9 +166,9 @@ def update_state(**kwargs):
     global REQUEST_COUNT
     logging.info("Update state")
     task_instance = kwargs['ti']
-    execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
+    success = task_instance.xcom_pull(key='return_value', task_ids='extract')[0]
     page_num = task_instance.xcom_pull(task_ids='extract', key='page_num')
-    success = task_instance.xcom_pull(return_value=True, task_ids='extract', key='success')
+    execution_date = task_instance.xcom_pull(task_ids='extract', key='execution_date')
 
     if success == True:
         task_instance.xcom_delete(key='http_request_state')
