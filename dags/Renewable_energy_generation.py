@@ -39,7 +39,7 @@ def get_or_initialize_state(**kwargs):
             'success': None
         }
         # 초기 상태를 XCom에 저장
-        task_instance.xcom_push(key='http_request_state', value=state)
+        task_instance.xcom_push(key='http_request_state', value=state, task_ids='get_state')
     logging.info(f"State: {state}")
 
 
@@ -174,7 +174,10 @@ def update_state(**kwargs):
         success = result
 
     if success == True:
-        XCom.clear(key='http_request_state')
+        XCom.clear(
+            task_ids=['get_state', 'extract', 'update_state'],
+            dag_id='net-project-ETL', 
+            execution_date=execution_date)
         logging.info("State deleted")
     else:
         # success == False인 경우 상태를 업데이트
@@ -184,7 +187,7 @@ def update_state(**kwargs):
             'request_count': REQUEST_COUNT,
             'success': success
         }
-        task_instance.xcom_push(key='http_request_state', value=state)
+        task_instance.xcom_push(key='http_request_state', value=state, task_ids='update_state')
         logging.info(f"State: {state}")
 
 
