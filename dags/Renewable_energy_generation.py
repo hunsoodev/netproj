@@ -128,7 +128,11 @@ def extract(**context):
         soup = BeautifulSoup(xml_string, 'lxml')
 
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
-        cnts = int(soup.totalcount.text)
+        if soup.totalcount is None:
+            logging.info("총 데이터 수를 가져오지 못했습니다.")
+        
+        # cnts 기본값 설정
+        cnts = int(soup.totalcount.text) if soup.totalcount is not None else 0
         cnt = math.ceil(cnts / 100)
     
         all_data = []
@@ -185,7 +189,7 @@ dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
     start_date=datetime(2024, 1, 20, tzinfo=local_tz),
-    schedule="@once",
+    schedule="@daily",
     catchup=True,
     max_active_runs=1,
     default_args={
