@@ -28,7 +28,6 @@ REQUEST_COUNT = 0
 def get_or_initialize_state(**kwargs):
     task_instance = kwargs['ti']
     state = task_instance.xcom_pull(task_ids='update_state', key='http_request_state')
-
     # 상태 정보가 없는 경우, 초기값으로 설정
     if not state:
         state = {
@@ -90,11 +89,9 @@ def send_request(url):
 def upload_df_to_s3(df, s3_key):
     try:
         hook = S3Hook(aws_conn_id='netproj_s3_conn_id')
-
         # 데이터프레임을 문자열 버퍼로 변환
         csv_buffer = StringIO()
         df.to_csv(csv_buffer, index=False, encoding='utf-8')
-
         # S3에 업로드
         hook.load_string(string_data=csv_buffer.getvalue(), bucket_name=BUCKET_NAME, key=s3_key, replace=True)
         logging.info(f"File {s3_key} successfully uploaded to S3 bucket {BUCKET_NAME}")
@@ -107,30 +104,23 @@ def upload_df_to_s3(df, s3_key):
 def extract(**context):
     logging.info("Extract started")
     success = True
-
     api_key = context["params"]["api_key"]
-
     task_instance = context['ti']
     state = task_instance.xcom_pull(task_ids='get_state', key='http_request_state')
     execution_date = state['last_execution_date']
     default_page_num = state['last_page']
-
     start_date = end_date = execution_date
 
     try:
         initial_url = create_url(api_key, 1, start_date, end_date)
-        
         flag, xml_string = send_request(initial_url)
         if flag == False and xml_string is None:
             raise Exception("초기 요청 실패")
-        
         # print(xml_string) # debuging 용도
         soup = BeautifulSoup(xml_string, 'lxml')
-
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
         if soup.totalcount is None:
             logging.info("총 데이터 수를 가져오지 못했습니다.")
-        
         # cnts 기본값 설정
         cnts = int(soup.totalcount.text) if soup.totalcount.text else 0
         cnt = math.ceil(cnts / 100)
@@ -158,10 +148,11 @@ def extract(**context):
             upload_df_to_s3(df, raw_data_s3_key)
 
         logging.info("Extract done")
-
+        return success
         
     except Exception as e:
         logging.exception(f"Error in the extraction process: {e}")
+
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
 def update_state(**kwargs):
@@ -173,7 +164,7 @@ def update_state(**kwargs):
     if success == True:
         task_instance.xcom_delete(key='http_request_state')
         return 
-        
+    
     state = {
         'last_execution_date': execution_date,
         'last_page': page_num,
