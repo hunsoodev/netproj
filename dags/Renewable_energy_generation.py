@@ -19,7 +19,7 @@ import logging
 import pendulum
 
 ## 로컬 타임존 생성
-local_tz = pendulum.timezone("Asia/Seoul")
+# local_tz = pendulum.timezone("Asia/Seoul")
 
 BUCKET_NAME = 'net-project'
 REQUEST_COUNT = 0
@@ -132,7 +132,7 @@ def extract(**context):
             logging.info("총 데이터 수를 가져오지 못했습니다.")
         
         # cnts 기본값 설정
-        cnts = int(soup.totalcount.text) if soup.totalcount is not None else 0
+        cnts = int(soup.totalcount.text) if soup.totalcount.text else 0
         cnt = math.ceil(cnts / 100)
     
         all_data = []
@@ -188,7 +188,7 @@ def update_state(**kwargs):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 20, tzinfo=local_tz),
+    start_date=datetime(2024, 1, 1), 
     schedule="@daily",
     catchup=True,
     max_active_runs=1,
