@@ -215,7 +215,7 @@ def transform(**context):
     df_transformed['날짜'] = df_transformed['날짜'].apply(fix_time)
     
     transform_data_s3_key = f'transform_data/transform_data_{execution_date}.csv'
-    upload_df_to_s3(df, transform_data_s3_key)
+    upload_df_to_s3(df_transformed, transform_data_s3_key)
     logging.info("Transform done")
 
     return transform_data_s3_key
