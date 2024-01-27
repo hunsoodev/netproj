@@ -117,11 +117,15 @@ def extract(**context):
         print(xml_string) # debuging 용도
         soup = BeautifulSoup(xml_string, 'lxml')
         # 각 월별 데이터 개수를 페이지당 100개씩 출력하므로 총 데이터 수에서 100으로 나누어 페이지 수를 계산
-        if soup.totalcount is None:
+        if not soup.totalcount:
             raise Exception("총 데이터 수를 가져오지 못했습니다.") # totalcount가 없는 경우 dags 자체 재시도
-            
-        # cnts 기본값 설정
-        cnts = int(soup.totalcount.text)
+        
+        # cnts 기본값 설정(totalcount가 없는 경우 고려)
+        cnts_text = soup.totalcount.text.strip()
+        if cnts_text.isdigit():
+            cnts = int(cnts_text)
+        else:
+            cnts = 0  # 기본값 설정
         cnt = math.ceil(cnts / 100)
     
         all_data = []
@@ -212,7 +216,6 @@ def transform(**context):
     transform_data_s3_key = f'transform_data/transform_data_{execution_date}.csv'
     upload_df_to_s3(df, transform_data_s3_key)
     logging.info("Transform done")
-    
     return transform_data_s3_key
 
     
