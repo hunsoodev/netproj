@@ -238,7 +238,7 @@ def transform(**context):
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
-    start_date=datetime(2024, 1, 23), 
+    start_date=datetime(2024, 1, 1), 
     schedule="@daily",
     catchup=True,
     max_active_runs=1,
