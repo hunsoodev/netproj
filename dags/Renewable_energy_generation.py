@@ -110,9 +110,10 @@ def extract(**context):
     logging.info("Extract started")
     success = True
     api_key = context["params"]["api_key"]
+    execution_date = context['ds_nodash']
+
     task_instance = context['ti']
     state = task_instance.xcom_pull(task_ids='get_state', key='http_request_state')
-    execution_date = state['execution_date']
     default_page_num = state['page_num']
     requests_count = state['request_count']
     start_date = end_date = execution_date
@@ -172,13 +173,13 @@ def update_state(**kwargs):
     if isinstance(result, tuple):  
         success, execu_date, page_num, requests_count = result
 
-    if success == True:
-        XCom.clear(
-            task_id='get_state',
-            dag_id='net-project-ETL',
-            execution_date=kwargs['execution_date'])
-        logging.info("State deleted")
-    else:
+    # if success == True:
+    #     XCom.clear(
+    #         task_id='get_state',
+    #         dag_id='net-project-ETL',
+    #         execution_date=kwargs['execution_date'])
+    #     logging.info("State deleted")
+    # else:
         # success == False인 경우 상태를 업데이트
         state = {
             'execution_date': execu_date,
