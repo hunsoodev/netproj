@@ -185,7 +185,7 @@ def transform(**context):
     logging.info("Transform started")
     execution_date = context['ds_nodash']
     raw_data_s3_key = context["ti"].xcom_pull(key="return_value", task_ids="extract")
-    df = read_data_from_s3('net-project', raw_data_s3_key)  # S3에서 데이터를 읽어 DataFrame 생성
+    df = read_data_from_s3(raw_data_s3_key)  # S3에서 데이터를 읽어 DataFrame 생성
 
     # process_row 함수를 transform 내부에 정의
     def process_row(i):
