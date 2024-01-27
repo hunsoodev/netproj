@@ -83,6 +83,7 @@ def send_request(url):
             increment_variable()
 
     else:  # 모든 재시도가 실패한 경우 (요청 횟수가 초과한 경우가 될 수 있음)
+        Variable.set("request_count", "0")  # 요청 횟수 초기화
         raise AirflowException(f"Failed to send request after {max_retries} attempts")
 
 
@@ -151,8 +152,70 @@ def extract(**context):
         raise  # 에러를 다시 던져서 에어플로우가 실패로 처리하도록 함
 
 
+# '24:00:00'을 처리하는 함수
+def fix_time(row):
+    date_part, time_part = row.split(' ')
+    date_obj = pd.to_datetime(date_part, format='%Y%m%d')
+
+    if time_part == '24:00:00':
+        date_obj += timedelta(days=1)
+        new_time_part = '00:00:00'
+    else:
+        new_time_part = time_part
+
+    return date_obj.strftime('%Y-%m-%d') + ' ' + new_time_part
 
 
+# transform할 때 사용 (S3에 raw_data/에 있는 데이터를 가져옴)
+def read_data_from_s3(s3_key):
+    try:
+        hook = S3Hook(aws_conn_id='mingd_S3')
+        data = hook.read_key(s3_key, bucket_name=BUCKET_NAME)
+        
+        df = pd.read_csv(StringIO(data))
+        logging.info(f"Data successfully read from S3: {BUCKET_NAME}/{s3_key}")
+        return df
+
+    except Exception as e:
+        logging.error(f"Error reading data from S3: {e}")
+        raise
+
+
+def transform(**context):
+    logging.info("Transform started")
+    execution_date = context['ds_nodash']
+    raw_data_s3_key = context["ti"].xcom_pull(key="return_value", task_ids="extract")
+    df = read_data_from_s3('net-project', raw_data_s3_key)  # S3에서 데이터를 읽어 DataFrame 생성
+
+    # process_row 함수를 transform 내부에 정의
+    def process_row(i):
+        # 시간 포멧을 위한 딕셔너리
+        time_dic = {f'{i}시': f'{i:02d}:00:00' for i in range(1, 25)}
+
+        name = df.loc[i]["발전기명"]
+        date = df.loc[i]["날짜"]
+        row_list = []
+        
+        for j in time_dic.keys():
+            elec_sum = df.loc[i, j]
+            datetime = str(date) + " " + time_dic[j]
+            row_list.append({"날짜": datetime, "발전량": elec_sum, "발전기명": name})
+        return row_list
+
+    # 멀티 스레드를 활용하여 함수 실행
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = [item for sublist in executor.map(process_row, range(len(df))) for item in sublist]
+    
+    df_transformed = pd.DataFrame(results)
+    df_transformed['날짜'] = df_transformed['날짜'].apply(fix_time)
+    
+    transform_data_s3_key = f'transform_data/transform_data_{execution_date}.csv'
+    upload_df_to_s3(df, transform_data_s3_key)
+    logging.info("Transform done")
+    
+    return transform_data_s3_key
+
+    
 dag = DAG(
     dag_id="net-project-ETL",
     tags=['net-project'],
@@ -178,4 +241,11 @@ extract = PythonOperator(
     dag = dag
 )
 
-extract
+transform = PythonOperator(
+    task_id = 'transform',
+    python_callable = transform,
+    provide_context = True,
+    dag = dag
+)
+
+extract >> transform
