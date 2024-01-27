@@ -22,20 +22,18 @@ import pendulum
 # local_tz = pendulum.timezone("Asia/Seoul")
 
 BUCKET_NAME = 'net-project'
-REQUEST_COUNT = 0
 
 
-def get_or_initialize_state(**kwargs):
+def get_or_initialize_state(**context):
     logging.info("Get or initialize state")
-    global REQUEST_COUNT
-    task_instance = kwargs['ti']
+    task_instance = context['ti']
     state = task_instance.xcom_pull(task_ids='update_state', key='http_request_state')
     # 상태 정보가 없는 경우, 초기값으로 설정
     if not state:
         state = {
-            'last_execution_date': kwargs['ds_nodash'],
-            'last_page': 1,
-            'request_count': REQUEST_COUNT,
+            'execution_date': context['ds_nodash'],
+            'page_num': 1,
+            'request_count': 0,
             'success': None
         }
         # 초기 상태를 XCom에 저장
@@ -66,29 +64,29 @@ def parse_xml(xml_string):
 
 
 # url을 받아서 요청을 보내고 응답을 반환
-def send_request(url):
-    global REQUEST_COUNT
+def send_request(requests_count, url):
     max_retries = 5  # 최대 재시도 횟수
-    retry_delay = 5  # 재시도 간 지연 시간(초)
+    retry_delay = 3  # 재시도 간 지연 시간(초)
 
     for _ in range(max_retries):
-        if REQUEST_COUNT > 100:
-            logging.info(f"[초과] API 요청 횟수 : {REQUEST_COUNT}")
-            return (True, None)   
-        
+        if requests_count > 100:
+            logging.info(f"[초과] API 요청 횟수 : {requests_count}")
+            return (True, None, requests_count)   
+
         try:
             response = requests.get(url, timeout=10)  # 타임아웃 설정
-            REQUEST_COUNT += 1
+            requests_count += 1
             response.raise_for_status()  # 상태 코드 검증
-            logging.info(f"API 요청 횟수 : {REQUEST_COUNT}")
-            return (True, response.text)
+            logging.info(f"API 요청 횟수 : {requests_count}")
+            return (True, response.text, requests_count)
+        
         except requests.exceptions.HTTPError as e:
             print(f"HTTP 에러: {e}")
         except requests.exceptions.RequestException as e:
             print(f"요청 에러: {e}")
         time.sleep(retry_delay)
 
-    return (False, None)
+    return (False, None, requests_count)
 
 
 # 데이터프레임을 S3에 업로드
@@ -110,18 +108,19 @@ def upload_df_to_s3(df, s3_key):
 
 def extract(**context):
     logging.info("Extract started")
-    success = False
+    success = True
     api_key = context["params"]["api_key"]
     task_instance = context['ti']
     state = task_instance.xcom_pull(task_ids='get_state', key='http_request_state')
-    execution_date = state['last_execution_date']
-    default_page_num = state['last_page']
+    execution_date = state['execution_date']
+    default_page_num = state['page_num']
+    requests_count = state['request_count']
     start_date = end_date = execution_date
 
     try:
         initial_url = create_url(api_key, 1, start_date, end_date)
-        flag, xml_string = send_request(initial_url)
-        if flag == False and xml_string is None:
+        created, xml_string, requests_count = send_request(requests_count, initial_url)
+        if created == False and xml_string is None:
             raise Exception("초기 요청 실패")
         
         print(xml_string) # debuging 용도
@@ -136,18 +135,20 @@ def extract(**context):
     
         all_data = []
         for page_num in range(default_page_num, cnt + 1):
+            tmp_page_num = page_num
             url = create_url(api_key, page_num, start_date, end_date)
-            flag, xml_string = send_request(url)
-            if flag == True:
-                if xml_string is not None:
+            created, xml_string, requests_count = send_request(requests_count, url)
+            # 데이터가 정상적으로 생성된 경우에만 파싱
+            if created == True:
+                if xml_string:
                     all_data.extend(parse_xml(xml_string))
                     logging.info(f"Page {page_num}/{cnt} successfully processed.")
-                else:
+                else: # 요청이 초과된 경우 아에 fail 처리(?) or 초과하기 전까지만 데이터 저장(임시방편)
                     logging.info(f"Page {page_num}/{cnt} failed to process.")
-                    return (success, execution_date, page_num)
-        
+                    success = False
+                    break
+        # 데이터 저장 후 로그 메시지 기록
         if all_data:
-            # 데이터 저장 후 로그 메시지 기록
             df = pd.DataFrame(all_data)
             hour = [f'{i}시' for i in range(1, 25)]
             df.columns = ['날짜', '발전기명'] + hour
@@ -156,8 +157,7 @@ def extract(**context):
             upload_df_to_s3(df, raw_data_s3_key)
 
         logging.info("Extract done")
-        success = True
-        return success
+        return (success, execution_date, tmp_page_num, requests_count)
         
     except Exception as e:
         logging.exception(f"Error in the extraction process: {e}")
@@ -165,15 +165,12 @@ def extract(**context):
 
 # Airflow에서 제공하는 XCom을 사용하여 상태를 저장
 def update_state(**kwargs):
-    global REQUEST_COUNT
     logging.info("Update state")
     task_instance = kwargs['ti']
     result = task_instance.xcom_pull(key='return_value', task_ids='extract')
 
     if isinstance(result, tuple):  
-        success, execu_date, page_num = result
-    else:
-        success = result
+        success, execu_date, page_num, requests_count = result
 
     if success == True:
         XCom.clear(
@@ -184,9 +181,9 @@ def update_state(**kwargs):
     else:
         # success == False인 경우 상태를 업데이트
         state = {
-            'last_execution_date': execu_date,
-            'last_page': page_num,
-            'request_count': REQUEST_COUNT,
+            'execution_date': execu_date,
+            'page_num': page_num,
+            'request_count': requests_count,
             'success': success
         }
         task_instance.xcom_push(key='http_request_state', value=state)
