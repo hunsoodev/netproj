@@ -169,7 +169,7 @@ def fix_time(row):
 # transform할 때 사용 (S3에 raw_data/에 있는 데이터를 가져옴)
 def read_data_from_s3(s3_key):
     try:
-        hook = S3Hook(aws_conn_id='mingd_S3')
+        hook = S3Hook(aws_conn_id='netproj_s3_conn_id')
         data = hook.read_key(s3_key, bucket_name=BUCKET_NAME)
         
         df = pd.read_csv(StringIO(data))
