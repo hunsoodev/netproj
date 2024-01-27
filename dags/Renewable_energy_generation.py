@@ -1,6 +1,8 @@
 # 모듈 임포트 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.operators.postgres import PostgresOperator
+from airflow.providers.amazon.aws.transfers.s3_to_redshift import S3ToRedshiftOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.models import Variable
 from airflow.models import XCom
@@ -21,8 +23,20 @@ import pendulum
 
 ## 로컬 타임존 생성
 # local_tz = pendulum.timezone("Asia/Seoul")
-
 BUCKET_NAME = 'net-project'
+REDSHIFT_DATABASE = 'dev'
+REDSHIFT_SCHEMA = 'raw_data'
+REDSHIFT_TABLE = 'renewable_energy'
+
+# raw_daya에 저장할 데이터의 형식
+CREATE_TABLE_SQL_STRING = (
+    f"""CREATE TABLE IF NOT EXISTS {REDSHIFT_DATABASE}.{REDSHIFT_SCHEMA}.{REDSHIFT_TABLE} (
+        date TIMESTAMP,
+        generation FLOAT,
+        generator_name VARCHAR(50)
+        );"""
+)
+
 
 def create_url(api_key, page_num, start_date, end_date):
     base_url = "http://apis.data.go.kr/B552522/pg/reGeneration/getReGeneration"
@@ -235,7 +249,6 @@ dag = DAG(
     }
 )
 
-
 extract = PythonOperator(
     task_id = 'extract',
     python_callable = extract,
@@ -253,4 +266,24 @@ transform = PythonOperator(
     dag = dag
 )
 
-extract >> transform
+create_table = PostgresOperator(
+    task_id = 'create_table',
+    postgres_conn_id = 'netproj_redshift_conn_id',
+    sql = CREATE_TABLE_SQL_STRING,
+    dag = dag
+)
+
+load_to_redshift = S3ToRedshiftOperator(
+    task_id = 'load_to_redshift',
+    s3_bucket = BUCKET_NAME,
+    s3_key = 'transform_data/transform_data_{{ ds_nodash }}.csv',
+    schema = REDSHIFT_SCHEMA,
+    table = REDSHIFT_TABLE,
+    copy_options = ["CSV", 'IGNOREHEADER 1'],
+    aws_conn_id = 'netproj_s3_conn_id',
+    redshift_conn_id = 'netproj_redshift_conn_id',
+    method = 'APPEND',
+    dag = dag
+)
+
+extract >> transform >> create_table >> load_to_redshift
