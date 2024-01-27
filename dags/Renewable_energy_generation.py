@@ -237,10 +237,10 @@ def transform(**context):
         ]
 
     df_transformed = pd.DataFrame(results)
-    df_transformed["날짜"] = df_transformed["날짜"].apply(fix_time)
-
-    transform_data_s3_key = f"transform_data/transform_data_{execution_date}.csv"
-    upload_df_to_s3(df, transform_data_s3_key)
+    df_transformed['날짜'] = df_transformed['날짜'].apply(fix_time)
+    
+    transform_data_s3_key = f'transform_data/transform_data_{execution_date}.csv'
+    upload_df_to_s3(df_transformed, transform_data_s3_key)
     logging.info("Transform done")
 
     return transform_data_s3_key
@@ -248,8 +248,8 @@ def transform(**context):
 
 dag = DAG(
     dag_id="net-project-ETL",
-    tags=["net-project"],
-    start_date=datetime(2024, 1, 23),
+    tags=['net-project'],
+    start_date=datetime(2024, 1, 1), 
     schedule="@daily",
     catchup=True,
     max_active_runs=1,
