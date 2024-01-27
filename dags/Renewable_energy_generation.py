@@ -30,13 +30,12 @@ REDSHIFT_SCHEMA = "raw_data"
 REDSHIFT_TABLE = "renewable_energy"
 
 # raw_daya에 저장할 데이터의 형식
-SQL_STRING = f"""
-        DELETE FROM {REDSHIFT_DATABASE}.{REDSHIFT_SCHEMA}.{REDSHIFT_TABLE};
-        CREATE TABLE IF NOT EXISTS {REDSHIFT_DATABASE}.{REDSHIFT_SCHEMA}.{REDSHIFT_TABLE} (
-                date TIMESTAMP,
-                generation FLOAT,
-                generator_name VARCHAR(50)
-                );"""
+SQL_STRING = f"DELETE FROM {REDSHIFT_DATABASE}.{REDSHIFT_SCHEMA}.{REDSHIFT_TABLE};"
+CREATE_TABLE_SQL_STRING = f"""CREATE TABLE IF NOT EXISTS {REDSHIFT_DATABASE}.{REDSHIFT_SCHEMA}.{REDSHIFT_TABLE} (
+        date TIMESTAMP,
+        generation FLOAT,
+        generator_name VARCHAR(50)
+        );"""
 
 
 def create_url(api_key, page_num, start_date, end_date):
@@ -279,7 +278,7 @@ transform = PythonOperator(
 create_table = PostgresOperator(
     task_id="create_table",
     postgres_conn_id="netproj_redshift_conn_id",
-    sql=SQL_STRING,
+    sql=SQL_STRING+CREATE_TABLE_SQL_STRING,
     dag=dag,
 )
 
