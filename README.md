@@ -4,6 +4,7 @@ Dashboard using Data Warehouse
 
 ### Software Architecture
 ![소프트웨어 아키텍처](images/software_architecture.png)
+- Python, Pandas, Docker
 - Server : Google Compute Engine (ubuntu 22.04.3 LTS, CPU4, RAM16)
 - Airflow : v2.6.3
 - Superset : v3.0.2
